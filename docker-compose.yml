@@ -1,0 +1,32 @@
+services:
+  app_blue:
+    image: ${BLUE_IMAGE}
+    container_name: app_blue
+    environment:
+      - RELEASE_ID=${RELEASE_ID_BLUE}
+    ports:
+      - "3001:${PORT}"
+  
+  app_green:
+    image: ${GREEN_IMAGE}
+    container_name: app_green
+    environment:
+      - RELEASE_ID=${RELEASE_ID_GREEN}
+    ports:
+      - "3002:${PORT}"
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/nginx.conf.template:ro
+      - ./entrypoint.sh:/docker-entrypoint.d/entrypoint.sh
+    environment:
+      - ACTIVE_POOL=${ACTIVE_POOL}
+    depends_on:
+      - app_blue
+      - app_green
+    command: ["/bin/sh", "-c", "/docker-entrypoint.d/entrypoint.sh"]
+

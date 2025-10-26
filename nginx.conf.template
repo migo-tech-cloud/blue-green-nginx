@@ -1,0 +1,18 @@
+events {}
+
+http {
+    upstream app_blue {
+        server app_blue:3000;
+    }
+
+    upstream app_green {
+        server app_green:3000;
+    }
+
+    server {
+        listen 80;
+        location / {
+            proxy_pass http://app_${ACTIVE_POOL};
+        }
+    }
+}

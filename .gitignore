@@ -1,0 +1,5 @@
+# Ignore local environment
+.env
+# Ignore Compose build artifacts
+*.log
+*.tmp
