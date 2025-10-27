@@ -2,31 +2,46 @@ services:
   app_blue:
     image: ${BLUE_IMAGE}
     container_name: app_blue
-    environment:
-      - RELEASE_ID=${RELEASE_ID_BLUE}
     ports:
-      - "3001:${PORT}"
-  
+      - "8081:3000"
+    environment:
+      - APP_POOL=blue
+      - PORT=${PORT}
+      - RELEASE_ID=${RELEASE_ID_BLUE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
   app_green:
     image: ${GREEN_IMAGE}
     container_name: app_green
-    environment:
-      - RELEASE_ID=${RELEASE_ID_GREEN}
     ports:
-      - "3002:${PORT}"
+      - "8082:3000"
+    environment:
+      - APP_POOL=green
+      - PORT=${PORT}
+      - RELEASE_ID=${RELEASE_ID_GREEN}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
   nginx:
-    image: nginx:latest
+    image: nginx:alpine
     container_name: nginx
-    ports:
-      - "8080:80"
-    volumes:
-      - ./nginx.conf.template:/etc/nginx/nginx.conf.template:ro
-      - ./entrypoint.sh:/docker-entrypoint.d/entrypoint.sh
-    environment:
-      - ACTIVE_POOL=${ACTIVE_POOL}
     depends_on:
       - app_blue
       - app_green
-    command: ["/bin/sh", "-c", "/docker-entrypoint.d/entrypoint.sh"]
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/nginx.conf.template
+    env_file: .env
+    command: >
+      /bin/sh -c "envsubst '$ACTIVE_POOL $PORT' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+
+
 
