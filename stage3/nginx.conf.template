@@ -1,28 +1,23 @@
-# nginx.conf.template (Stage 3)
-# ==========================================
-# Custom Nginx configuration for Blue-Green Deployment + Observability
-# ==========================================
+# nginx.conf.template
+worker_processes auto;
 
-# user  nginx;
-worker_processes  auto;
-
-error_log  /var/log/nginx/error.log warn;
-pid        /var/run/nginx.pid;
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
 
 events {
-    worker_connections  1024;
+    worker_connections 1024;
 }
 
 http {
     include       /etc/nginx/mime.types;
     default_type  application/octet-stream;
-    sendfile        on;
-    keepalive_timeout  65;
+
+    sendfile on;
+    keepalive_timeout 65;
     proxy_connect_timeout 2s;
     proxy_send_timeout 3s;
     proxy_read_timeout 3s;
 
-    # --------- Custom Log Format ---------
     log_format custom '$remote_addr - $remote_user [$time_local] '
                       '"$request" $status $body_bytes_sent '
                       '"$http_referer" "$http_user_agent" '
@@ -32,13 +27,11 @@ http {
 
     access_log /var/log/nginx/access.log custom;
 
-    # --------- Upstream Configuration ---------
     upstream backend {
-        server app_blue:3000 max_fails=2 fail_timeout=5s;
-        server app_green:3000 backup;
+        server blue_app:3000 max_fails=2 fail_timeout=5s;
+        server green_app:3000 backup;
     }
 
-    # --------- Server Configuration ---------
     server {
         listen 80;
 
@@ -48,18 +41,12 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-
-            proxy_set_header X-App-Pool $upstream_http_x_app_pool;
-            proxy_set_header X-Release-Id $upstream_http_x_release_id;
-
             proxy_next_upstream error timeout http_500 http_502 http_503 http_504;
             proxy_next_upstream_tries 2;
         }
 
         location /version {
             proxy_pass http://backend/version;
-            proxy_set_header X-App-Pool $upstream_http_x_app_pool;
-            proxy_set_header X-Release-Id $upstream_http_x_release_id;
         }
     }
 }
