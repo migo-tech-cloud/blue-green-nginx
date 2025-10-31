@@ -1,112 +1,99 @@
-# Stage 2: Blue/Green with Nginx Upstreams
+# Blue-Green Deployment with Nginx and Alert Watcher
 
-# Blue-Green Deployment with Nginx and Docker Compose
-
-This project demonstrates a **Blue-Green Deployment** setup using **Nginx** as a reverse proxy and two backend application pools (`blue` and `green`).  
-It ensures zero downtime when deploying new versions.
+This project implements a **Blue-Green deployment setup** using Nginx as a reverse proxy and a custom Python-based **alert watcher** to monitor Nginx logs for errors and send Slack notifications.
 
 ---
 
-## 🛠️ Prerequisites
+## 🚀 Features
 
-- Docker and Docker Compose installed  
-- Git installed  
-- (For EC2) Ubuntu instance with ports **8080**, **8081**, **8082** open in the Security Group  
-- An `.env` file configured (see `.env.example`)
-
----
-
-## 📥 Clone the Repository
-
-git clone https://github.com/<your-username>/blue-green-nginx.git
-cd blue-green-nginx
+- Blue-Green deployment with **two backend app instances** (`blue_app` and `green_app`)
+- **Nginx reverse proxy** with custom log formatting
+- **Alert Watcher** in Python:
+  - Monitors Nginx access logs
+  - Sends Slack notifications when error thresholds are reached
+- Configurable via `.env`
+- Dockerized for easy deployment
 
 ---
 
-## ⚙️ Configure Environment Variables
-Create a .env file based on .env.example:
+## 🏗️ Project Structure
+
+stage3/
+├─ docker-compose.yml
+├─ nginx.conf.template
+├─ watcher/
+│ ├─ Dockerfile
+│ ├─ watcher.py
+│ └─ requirements.txt
+├─ logs/
+│ ├─ access.log
+│ └─ error.log
+├─ .env.example
+├─ README.md
+└─ runbook.md
+
+
+---
+
+## ⚙️ Setup Instructions
+
+1. **Clone the repository**:
+
+```bash
+git clone https://github.com/<your-org>/blue-green-nginx.git
+cd blue-green-nginx/stage3
+Create a .env file:
+
+bash
+Copy code
 cp .env.example .env
-
-Then edit it:
 nano .env
+Update values as needed, e.g.:
 
-Example:
-BLUE_IMAGE=
-GREEN_IMAGE=
+ini
+Copy code
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXXXX/YYYYY/ZZZZZ
 ACTIVE_POOL=blue
-RELEASE_ID_BLUE=blue-v1
-RELEASE_ID_GREEN=green-v1
-PORT=3000
+RELEASE_ID_BLUE=v1.0
+RELEASE_ID_GREEN=v2.0
+ERROR_RATE_THRESHOLD=2
+WINDOW_SIZE=200
+ALERT_COOLDOWN_SEC=300
+LOG_PATH=/var/log/nginx/access.log
+Build and run containers:
 
----
+bash
+Copy code
+sudo docker compose up --build -d
+Verify containers:
 
-## 🚀 Run Locally
+bash
+Copy code
+sudo docker ps
+Trigger test errors (optional):
 
-sudo docker compose up -d
+bash
+Copy code
+for i in {1..10}; do curl -I http://localhost/500; done
+Monitor alerts:
 
-Then visit:
+bash
+Copy code
+sudo docker logs -f alert_watcher
+📝 Notes
+The watcher monitors real Nginx logs (/var/log/nginx/access.log). Ensure real files, not symlinks (/dev/stdout), are mounted for it to work.
 
-http://localhost:8080/version → Nginx reverse proxy
+Slack alerts are triggered based on error rate thresholds defined in .env.
 
-http://localhost:8081/version → Blue app
+Nginx uses a custom log format with metadata for Blue-Green releases.
 
-http://localhost:8082/version → Green app
+🛡️ Security
+Do not commit your Slack webhook to the repository.
 
----
+Use .env for sensitive credentials.
 
-## ☁️ Deploy on AWS EC2
+Follow Docker security best practices:
 
-SSH into your EC2 instance:
-ssh -i "your-key.pem" ubuntu@<EC2-PUBLIC-IP> **OR** connect via AWS terminal **OR** via MobaXterm
+Remove unused volumes
 
-Install Docker:
-sudo apt update
-sudo apt install docker.io docker-compose-plugin -y
-sudo systemctl enable docker && sudo systemctl start docker
-
-Clone this repo and start the stack:
-git clone https://github.com/<your-username>/blue-green-nginx.git
-cd blue-green-nginx
-sudo docker compose up -d
-
-Then visit:
-http://<EC2-PUBLIC-IP>:8080/version
-
----
-
-## 🔄 Switching Between Blue and Green
-
-To switch pools, edit .env:
-ACTIVE_POOL=green
-
-Then restart Nginx:
-sudo docker compose restart nginx
-Now Nginx routes traffic to the green container.
-
----
-
-## 🧹 Teardown
-To stop and remove containers:
-sudo docker compose down
-
----
-
-## 🧠 Notes
-
-Nginx dynamically reads which pool (blue or green) to serve using environment variables.
-
-The entrypoint.sh script rewrites the active target in the Nginx config at container startup.
-
-This structure allows deploying a new version to the idle pool, testing it, then switching with zero downtime.
-
----
-
-## Stage 3 – Observability & Alerts
-
-### Setup
-
-1. Copy `.env.example` → `.env`
-2. Add your `SLACK_WEBHOOK_URL` from Slack (Incoming Webhook).
-3. Run:
-   ```bash
-   docker compose up --build -d
+Limit container privileges
