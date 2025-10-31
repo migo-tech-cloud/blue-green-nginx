@@ -30,15 +30,16 @@ services:
       - "80:80"
     volumes:
       - ./nginx.conf.template:/etc/nginx/nginx.conf:ro
-      - nginx_logs:/var/log/nginx
+      - ./logs/access.log:/var/log/nginx/access.log
+      - ./logs/error.log:/var/log/nginx/error.log
     depends_on:
       - blue_app
       - green_app
 
   alert_watcher:
     build:
-      context: .
-      dockerfile: watcher.Dockerfile
+      context: ./watcher
+      dockerfile: Dockerfile
     container_name: alert_watcher
     env_file: .env
     environment:
@@ -48,10 +49,11 @@ services:
       - ALERT_COOLDOWN_SEC=${ALERT_COOLDOWN_SEC}
       - LOG_PATH=${LOG_PATH}
     volumes:
-      - nginx_logs:/var/log/nginx
+      - ./logs/access.log:/var/log/nginx/access.log
     depends_on:
       - nginx_proxy
 
 volumes:
   nginx_logs:
+
 
