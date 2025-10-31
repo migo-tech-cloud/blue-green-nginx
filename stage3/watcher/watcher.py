@@ -2,97 +2,87 @@ import os
 import time
 import json
 import requests
-from collections import deque
+import re
 
-# --- Load Environment Variables ---
+# =============== CONFIGURATION ===============
+LOG_PATH = os.getenv("LOG_PATH", "/var/log/nginx/access.log")
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
-ACTIVE_POOL = os.getenv("ACTIVE_POOL", "blue")
-ERROR_RATE_THRESHOLD = float(os.getenv("ERROR_RATE_THRESHOLD", 2))
+ERROR_RATE_THRESHOLD = int(os.getenv("ERROR_RATE_THRESHOLD", 2))
 WINDOW_SIZE = int(os.getenv("WINDOW_SIZE", 200))
 ALERT_COOLDOWN_SEC = int(os.getenv("ALERT_COOLDOWN_SEC", 300))
-LOG_PATH = "/var/log/nginx/access.log"
 
-# --- Internal State ---
-last_pool = ACTIVE_POOL
 last_alert_time = 0
-error_window = deque(maxlen=WINDOW_SIZE)
 
-def send_slack_alert(message, alert_type="info"):
-    """Send formatted message to Slack"""
-    global last_alert_time
-    now = time.time()
 
-    # Respect cooldown
-    if now - last_alert_time < ALERT_COOLDOWN_SEC:
+# =============== FUNCTIONS ===============
+def send_slack_alert(message):
+    """Send a formatted alert to Slack"""
+    if not SLACK_WEBHOOK_URL:
+        print("[ERROR] SLACK_WEBHOOK_URL not set. Exiting.")
         return
 
-    payload = {
-        "text": f":rotating_light: *{alert_type.upper()} ALERT*\n{message}"
-    }
-
+    payload = {"text": f":rotating_light: *NGINX ALERT* :rotating_light:\n{message}"}
     try:
-        requests.post(SLACK_WEBHOOK_URL, json=payload)
-        last_alert_time = now
-        print(f"[INFO] Alert sent to Slack: {message}")
+        response = requests.post(SLACK_WEBHOOK_URL, data=json.dumps(payload), headers={"Content-Type": "application/json"})
+        if response.status_code == 200:
+            print("[INFO] Alert sent successfully to Slack.")
+        else:
+            print(f"[ERROR] Slack response {response.status_code}: {response.text}")
     except Exception as e:
         print(f"[ERROR] Failed to send Slack alert: {e}")
 
-def analyze_log_line(line):
-    """Parse Nginx access log line"""
-    global last_pool
 
-    # Expect log format fields like:
-    # pool=blue release=blue-v1 upstream_status=200 ...
-    parts = line.strip().split()
-    data = {}
-    for part in parts:
-        if '=' in part:
-            key, val = part.split('=', 1)
-            data[key] = val
+def parse_status_code(line):
+    """Extract HTTP status code from NGINX log line"""
+    match = re.search(r'"\s(\d{3})\s', line)
+    if match:
+        return int(match.group(1))
+    return None
 
-    pool = data.get("pool")
-    upstream_status = data.get("upstream_status", "")
-    status_code = upstream_status if upstream_status.isdigit() else "0"
-
-    # Detect pool flip
-    if pool and pool != last_pool:
-        send_slack_alert(
-            f"Failover detected! Pool switched from *{last_pool}* → *{pool}*.",
-            alert_type="failover"
-        )
-        last_pool = pool
-
-    # Track 5xx errors
-    if status_code.startswith("5"):
-        error_window.append(1)
-    else:
-        error_window.append(0)
-
-    if len(error_window) == WINDOW_SIZE:
-        error_rate = sum(error_window) / WINDOW_SIZE * 100
-        if error_rate > ERROR_RATE_THRESHOLD:
-            send_slack_alert(
-                f"High error rate detected: {error_rate:.2f}% 5xx responses in last {WINDOW_SIZE} requests.",
-                alert_type="error-rate"
-            )
 
 def tail_log(file_path):
-    """Continuously read log file"""
-    print("[INFO] Starting log watcher...")
-    with open(file_path, "r") as f:
-        f.seek(0, 2)  # Go to end of file
-        while True:
-            line = f.readline()
-            if line:
-                analyze_log_line(line)
-            else:
-                time.sleep(0.5)
+    """Stream Nginx logs line-by-line safely"""
+    global last_alert_time
+    buffer = []
 
-if __name__ == "__main__":
-    if not SLACK_WEBHOOK_URL:
-        print("[ERROR] SLACK_WEBHOOK_URL not set. Exiting.")
-        exit(1)
+    print("[INFO] Starting log watcher...")
+
     try:
-        tail_log(LOG_PATH)
-    except KeyboardInterrupt:
-        print("\n[INFO] Watcher stopped manually.")
+        with open(file_path, "r") as f:
+            # Move to end of file without seeking
+            for line in f:
+                pass  # read until EOF to start at end
+
+            while True:
+                line = f.readline()
+                if not line:
+                    time.sleep(1)
+                    continue
+
+                status_code = parse_status_code(line)
+                if status_code:
+                    buffer.append(status_code)
+
+                if len(buffer) > WINDOW_SIZE:
+                    buffer.pop(0)
+
+                errors = [c for c in buffer if c >= 500]
+                error_rate = (len(errors) / len(buffer)) * 100 if buffer else 0
+
+                if len(buffer) >= WINDOW_SIZE and error_rate >= ERROR_RATE_THRESHOLD:
+                    now = time.time()
+                    if now - last_alert_time > ALERT_COOLDOWN_SEC:
+                        send_slack_alert(f"High error rate detected: {error_rate:.2f}% errors in last {WINDOW_SIZE} requests.")
+                        last_alert_time = now
+                    else:
+                        print("[INFO] Alert suppressed due to cooldown.")
+    except FileNotFoundError:
+        print(f"[ERROR] Log file not found: {file_path}")
+    except Exception as e:
+        print(f"[ERROR] Unexpected error: {e}")
+
+
+# =============== MAIN ENTRY ===============
+if __name__ == "__main__":
+    tail_log(LOG_PATH)
+
