@@ -41,19 +41,14 @@ stage3/
 
 1. **Clone the repository**:
 
-```bash
 git clone https://github.com/<your-org>/blue-green-nginx.git
 cd blue-green-nginx/stage3
-Create a .env file:
 
-bash
-Copy code
+2. **Create a .env file**:
 cp .env.example .env
 nano .env
-Update values as needed, e.g.:
 
-ini
-Copy code
+3. **Update values as needed, e.g.**:
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXXXX/YYYYY/ZZZZZ
 ACTIVE_POOL=blue
 RELEASE_ID_BLUE=v1.0
@@ -62,40 +57,39 @@ ERROR_RATE_THRESHOLD=2
 WINDOW_SIZE=200
 ALERT_COOLDOWN_SEC=300
 LOG_PATH=/var/log/nginx/access.log
-Build and run containers:
 
-bash
-Copy code
+4. **Build and run containers**:
 sudo docker compose up --build -d
-Verify containers:
 
-bash
-Copy code
+5. **Verify containers**:
 sudo docker ps
-Trigger test errors (optional):
 
-bash
-Copy code
+6. **Trigger test errors**:
 for i in {1..10}; do curl -I http://localhost/500; done
-Monitor alerts:
 
-bash
-Copy code
+7. **Monitor alerts**:
 sudo docker logs -f alert_watcher
-📝 Notes
-The watcher monitors real Nginx logs (/var/log/nginx/access.log). Ensure real files, not symlinks (/dev/stdout), are mounted for it to work.
 
-Slack alerts are triggered based on error rate thresholds defined in .env.
+---
 
-Nginx uses a custom log format with metadata for Blue-Green releases.
+## 📝 Notes
 
-🛡️ Security
-Do not commit your Slack webhook to the repository.
+- The watcher monitors real Nginx logs (/var/log/nginx/access.log). Ensure real files, not symlinks (/dev/stdout), are mounted for it to work.
 
-Use .env for sensitive credentials.
+- Slack alerts are triggered based on error rate thresholds defined in .env.
 
-Follow Docker security best practices:
+- Nginx uses a custom log format with metadata for Blue-Green releases.
 
-Remove unused volumes
+---
 
-Limit container privileges
+## 🛡️ Security
+
+- Do not commit your Slack webhook to the repository.
+
+- Use .env for sensitive credentials.
+
+- Follow Docker security best practices:
+
+- Remove unused volumes
+
+- Limit container privileges
